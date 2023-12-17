@@ -46,173 +46,144 @@
 
 
 
-//import javax.swing.*;
-//import java.awt.*;
-//import java.awt.event.ActionEvent;
-//import java.awt.event.ActionListener;
-//
-//public class MonteCarlo extends JFrame {
-//    private static final int FRAME_WIDTH = 600;
-//    private static final int FRAME_HEIGHT = 600;
-//
-//    private static final int SQUARE_SIZE = 200;
-//    private static final int CIRCLE_DIAMETER = 200;
-//
-//    private int pointY = 0;
-//
-//    public MonteCarlo() {
-//        setTitle("Circle and Square Animation");
-//        setSize(FRAME_WIDTH, FRAME_HEIGHT);
-//        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-//
-//        Timer timer = new Timer(50, new ActionListener() {
-//            @Override
-//            public void actionPerformed(ActionEvent e) {
-//                pointY += 5; // Adjust the speed of falling points
-//
-//                if (pointY > FRAME_HEIGHT) {
-//                    pointY = 0;
-//                }
-//
-//                repaint();
-//            }
-//        });
-//
-//        timer.start();
-//
-//        add(new AnimationPanel());
-//
-//        setLocationRelativeTo(null);
-//        setVisible(true);
-//    }
-//
-//    private class AnimationPanel extends JPanel {
-//        @Override
-//        protected void paintComponent(Graphics g) {
-//            super.paintComponent(g);
-//
-//            drawSquare(g);
-//            drawCircle(g);
-//            drawFallingPoint(g);
-//        }
-//        private void drawSquare(Graphics g) {
-//            g.setColor(Color.RED);
-//            g.drawRect((FRAME_WIDTH - SQUARE_SIZE) / 2, (FRAME_HEIGHT - SQUARE_SIZE) / 2, SQUARE_SIZE, SQUARE_SIZE);
-//        }
-//
-//        private void drawCircle(Graphics g) {
-//            g.setColor(Color.BLUE);
-//            g.drawOval((FRAME_WIDTH - CIRCLE_DIAMETER) / 2, (FRAME_HEIGHT - CIRCLE_DIAMETER) / 2, CIRCLE_DIAMETER, CIRCLE_DIAMETER);
-//        }
-//
-//        private void drawFallingPoint(Graphics g) {
-//            g.setColor(Color.RED);
-//            g.fillOval((FRAME_WIDTH - 10) / 2, pointY, 10, 10);
-//        }
-//    }
-//
-//    public static void main(String[] args) {
-//        SwingUtilities.invokeLater(() -> new MonteCarlo());
-//    }
-//}
-
-
-
-
-
-
-
-
-
-
 import javax.swing.*;
-        import java.awt.*;
-        import java.awt.event.ActionEvent;
+import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.Random;
+import java.util.List;
+import java.util.concurrent.*;
 
 public class MonteCarlo extends JFrame {
+    private static final int WIDTH = 500;
+    private static final int HEIGHT = 500;
+    private static final int NUM_POINTS = 100;
 
-    private MonteCarloPiEstimationPanel monteCarloPanel;
+    private JLabel piLabel;
+    private DrawingPanel drawingPanel;
 
     public MonteCarlo() {
-        setTitle("Monte Carlo π Estimation");
-        setSize(400, 400);
+        setTitle("Monte Carlo Pi Simulation");
+        setSize(WIDTH, HEIGHT);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        monteCarloPanel = new MonteCarloPiEstimationPanel();
-        add(monteCarloPanel, BorderLayout.CENTER);
+        piLabel = new JLabel("Estimate of Pi: ");
+        JButton startButton = new JButton("Start Simulation");
 
-        JButton estimateButton = new JButton("Estimate π");
-        estimateButton.addActionListener(new ActionListener() {
+        startButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                monteCarloPanel.estimatePi();
-                monteCarloPanel.repaint();
+                startSimulation();
             }
         });
 
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.add(estimateButton);
+        drawingPanel = new DrawingPanel();
 
-        add(buttonPanel, BorderLayout.SOUTH);
+        setLayout(new BorderLayout());
+        add(piLabel, BorderLayout.NORTH);
+        add(startButton, BorderLayout.SOUTH);
+        add(drawingPanel, BorderLayout.CENTER);
 
         setVisible(true);
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new MonteCarlo());
-    }
-}
+    private void startSimulation() {
+        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        List<Future<Integer>> futures = new CopyOnWriteArrayList<>();
 
-class MonteCarloPiEstimationPanel extends JPanel {
+        for (int i = 0; i < NUM_POINTS; i++) {
+            futures.add(executorService.submit(new MonteCarloTask()));
+        }
 
-    private int totalPoints = 0;
-    private int pointsInsideCircle = 0;
+        executorService.shutdown();
 
-    public void estimatePi() {
-        Random random = new Random();
+        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                int insideCircleCount = 0;
 
-        int numPoints = 100000; // Adjust the number of points for a better estimation
+                for (Future<Integer> future : futures) {
+                    insideCircleCount += future.get();
+                }
 
-        for (int i = 0; i < numPoints; i++) {
-            double x = random.nextDouble();
-            double y = random.nextDouble();
+                double piEstimate = (4.0 * insideCircleCount) / NUM_POINTS;
 
-            double distance = Math.sqrt(x * x + y * y);
+                SwingUtilities.invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        piLabel.setText("Estimate of Pi: " + piEstimate);
+                        drawingPanel.repaint();
+                    }
+                });
 
-            if (distance <= 1.0) {
-                pointsInsideCircle++;
+                return null;
             }
+        };
 
-            totalPoints++;
+        worker.execute();
+    }
+
+    private class DrawingPanel extends JPanel {
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            g.setColor(Color.BLACK);
+
+            // Draw square
+            g.drawRect(50, 50, 400, 400);
+
+            // Draw circle
+            g.drawOval(50, 50, 400, 400);
+
+            // Draw balls (points) based on simulation
+            for (int i = 0; i < NUM_POINTS; i++) {
+                double x = Math.random() * 400 + 50;
+                double y = Math.random() * 400 + 50;
+
+                if (x * x + y * y <= 40000) {
+                    g.setColor(Color.RED); // Inside circle
+                } else {
+                    g.setColor(Color.BLUE); // Outside circle
+                }
+
+                g.fillOval((int) x - 2, (int) y - 2, 4, 4);
+            }
         }
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
+    private class MonteCarloTask implements Callable<Integer> {
+        @Override
+        public Integer call() {
+            double x = Math.random() * 400 + 50;
+            double y = Math.random() * 400 + 50;
 
-        int squareSize = Math.min(getWidth(), getHeight());
-
-        int squareX = (getWidth() - squareSize) / 2;
-        int squareY = (getHeight() - squareSize) / 2;
-
-        g.setColor(Color.BLUE);
-        g.fillRect(squareX, squareY, squareSize, squareSize); // Draw the square
-
-        g.setColor(Color.RED);
-        g.fillArc(squareX, squareY, squareSize, squareSize, 0, 90); // Draw the quarter circle
-
-        g.setColor(Color.BLACK);
-        g.drawString("Total Points: " + totalPoints, 10, 20);
-        g.drawString("Points Inside Circle: " + pointsInsideCircle, 10, 40);
-
-        if (totalPoints > 0) {
-            double piEstimation = 4.0 * pointsInsideCircle / totalPoints;
-            g.drawString("π Estimate: " + piEstimation, 10, 60);
+            // Check if the point is inside the unit circle
+            if (x * x + y * y <= 40000) {
+                return 1;
+            } else {
+                return 0;
+            }
         }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                new MonteCarlo();
+            }
+        });
     }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
